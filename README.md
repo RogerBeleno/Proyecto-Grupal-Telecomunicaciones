@@ -34,3 +34,4 @@ POST /predict
   "factores": [ { "factor": "Contrato mes a mes", "efecto": "aumenta" } ],
   "modelo": "churn_clf v0.1" }
 
+https://www.canva.com/design/DAHZCUMu47I/badt8fOWf2XZfipSN2hiXg/edit (enlace de canva de la maqueta)
