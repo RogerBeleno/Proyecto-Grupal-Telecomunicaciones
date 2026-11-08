@@ -35,3 +35,18 @@ POST /predict
   "modelo": "churn_clf v0.1" }
 
 https://www.canva.com/design/DAHZCUMu47I/badt8fOWf2XZfipSN2hiXg/edit (enlace de canva de la maqueta)
+
+## Entrega 2 — Modelos y experimentos en MLflow
+
+**Código:** `models/train_mlflow.py` entrena 6 modelos (regresión logística, random forest y gradient boosting, con y sin balanceo de clases) y registra en MLflow los parámetros, las métricas (accuracy, precision, recall, F1, ROC-AUC) y cada modelo.
+
+**Cómo reproducirlo en EC2:**
+
+```bash
+pip install -r requirements.txt
+dvc pull                                   # descarga base_de_datos_proyecto.csv desde S3
+mlflow server -h 0.0.0.0 -p 5000 --backend-store-uri sqlite:///mlflow.db
+python models/train_mlflow.py --data base_de_datos_proyecto.csv --tracking http://localhost:5000
+```
+
+La interfaz queda en `http://<IP-pública-EC2>:5000` (puerto 5000 abierto en el security group). Los pantallazos de los experimentos están en `docs/mlflow/`.
