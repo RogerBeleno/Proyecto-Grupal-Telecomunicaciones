@@ -54,17 +54,17 @@ def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
 
 # Cada entrada = una corrida (run) en MLflow
 EXPERIMENTS = [
-    ("logistic_regression", LogisticRegression, {"C": 1.0, "max_iter": 1000}),
-    ("logistic_regression_C0.1", LogisticRegression, {"C": 0.1, "max_iter": 1000}),
+    ("logistic_regression", LogisticRegression, {"C": 1.0, "max_iter": 5000}),
+    ("logistic_regression_C0.1", LogisticRegression, {"C": 0.1, "max_iter": 5000}),
     ("logistic_regression_balanced", LogisticRegression,
-     {"C": 1.0, "max_iter": 1000, "class_weight": "balanced"}),
+     {"C": 1.0, "max_iter": 5000, "class_weight": "balanced"}),
     ("random_forest", RandomForestClassifier,
-     {"n_estimators": 200, "max_depth": 8, "random_state": SEED}),
+     {"n_estimators": 200, "max_depth": 7, "random_state": SEED}),
     ("random_forest_balanced", RandomForestClassifier,
-     {"n_estimators": 300, "max_depth": 10, "class_weight": "balanced",
+     {"n_estimators": 300, "max_depth": 7, "class_weight": "balanced",
       "random_state": SEED}),
     ("gradient_boosting", GradientBoostingClassifier,
-     {"n_estimators": 200, "learning_rate": 0.05, "max_depth": 3,
+     {"n_estimators": 200, "learning_rate": 0.05, "max_depth": 7,
       "random_state": SEED}),
 ]
 
