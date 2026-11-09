@@ -3,3 +3,5 @@ scikit-learn
 pandas
 numpy
 dvc[s3]
+streamlit
+plotly
