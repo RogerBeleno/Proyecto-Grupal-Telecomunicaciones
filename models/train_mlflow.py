@@ -53,18 +53,21 @@ def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
 
 
 EXPERIMENTS = [
-    ("logistic_regression", LogisticRegression, {"C": 1.0, "max_iter": 1000}),
-    ("logistic_regression_C0.1", LogisticRegression, {"C": 0.1, "max_iter": 1000}),
-    ("logistic_regression_balanced", LogisticRegression,
-     {"C": 1.0, "max_iter": 1000, "class_weight": "balanced"}),
-    ("random_forest", RandomForestClassifier,
-     {"n_estimators": 200, "max_depth": 8, "random_state": SEED}),
-    ("random_forest_balanced", RandomForestClassifier,
-     {"n_estimators": 300, "max_depth": 10, "class_weight": "balanced",
-      "random_state": SEED}),
-    ("gradient_boosting", GradientBoostingClassifier,
-     {"n_estimators": 200, "learning_rate": 0.05, "max_depth": 3,
-      "random_state": SEED}),
+    # modelo 1. GB con variacion de hiperparametros
+    ("gb_lr0.03_depth2", GradientBoostingClassifier,
+     {"n_estimators": 200, "learning_rate": 0.03, "max_depth": 2, "random_state": SEED}),
+    ("gb_lr0.03_depth6", GradientBoostingClassifier,
+     {"n_estimators": 200, "learning_rate": 0.03, "max_depth": 6, "random_state": SEED}),
+    ("gb_lr0.10_depth6", GradientBoostingClassifier,
+     {"n_estimators": 200, "learning_rate": 0.10, "max_depth": 6, "random_state": SEED}),
+
+    # modelo 2. RL con variaciones de hiperparametros
+    ("logreg_C0.1_default", LogisticRegression,
+     {"C": 0.1, "class_weight": None, "max_iter": 1000}),
+    ("logreg_C0.1_balanced", LogisticRegression,
+     {"C": 0.1, "class_weight": "balanced", "max_iter": 1000}),
+    ("logreg_C1.0_balanced", LogisticRegression,
+     {"C": 1.0, "class_weight": "balanced", "max_iter": 1000}),
 ]
 
 
