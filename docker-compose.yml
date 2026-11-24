@@ -1,0 +1,29 @@
+# Levanta la API (puerto 8001) y el tablero (puerto 8501).
+# Requisito: base_de_datos_proyecto.csv en la raíz del repo (dvc pull o descarga de Kaggle).
+#   docker compose up -d --build
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: churntel-api
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: churntel-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://api:8001
+      # Servidor MLflow corriendo en la misma EC2 (fuera de Docker), puerto 5000
+      MLFLOW_TRACKING_URI: http://host.docker.internal:5000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - api
+    restart: unless-stopped
