@@ -1,11 +1,17 @@
+import json
 import os
 
-import mlflow
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import streamlit as st
-from mlflow.tracking import MlflowClient
+# Si MLflow no responde, fallar rápido en vez de reintentar varios minutos.
+os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "0")
+os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "5")
+
+import mlflow  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import plotly.express as px  # noqa: E402
+import requests  # noqa: E402
+import streamlit as st  # noqa: E402
+from mlflow.tracking import MlflowClient  # noqa: E402
 
 # ---------------------------------------------------------
 # Configuracion
@@ -15,6 +21,8 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+
+API_URL = os.getenv("API_URL", "http://localhost:8001").rstrip("/")
 
 st.markdown(
     """
@@ -93,6 +101,7 @@ def prepare_data(data):
     df.columns = (
         df.columns.astype(str)
         .str.strip()
+        .str.replace(r"([a-z0-9])([A-Z])", r"\1_\2", regex=True)
         .str.lower()
         .str.replace(r"[^a-z0-9]+", "_", regex=True)
         .str.strip("_")
@@ -197,6 +206,27 @@ def get_mlflow_runs(tracking_uri):
 
 
 # ---------------------------------------------------------
+# API del modelo
+# ---------------------------------------------------------
+@st.cache_data(ttl=30, show_spinner=False)
+def api_health(api_url):
+    response = requests.get(f"{api_url}/health", timeout=5)
+    response.raise_for_status()
+    return response.json()
+
+
+@st.cache_data(show_spinner="Consultando el modelo en la API...")
+def api_predict(api_url, customers_json):
+    response = requests.post(
+        f"{api_url}/predict",
+        json={"customers": json.loads(customers_json)},
+        timeout=60,
+    )
+    response.raise_for_status()
+    return pd.DataFrame(response.json()["predicciones"])
+
+
+# ---------------------------------------------------------
 # Sidebar: fuentes y filtros
 # ---------------------------------------------------------
 st.sidebar.title("⚙️ Configuration")
@@ -284,8 +314,20 @@ k4.metric("Active customers", f"{active_customers:,}")
 
 st.divider()
 
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📈 Executive overview", "👥 Customer analysis", "🚨 Churn risk", "🤖 Model performance"]
+try:
+    model_info = api_health(API_URL)
+    st.sidebar.success(
+        f"API conectada: {model_info['modelo']} v{model_info['version']}"
+    )
+except Exception:
+    model_info = None
+    st.sidebar.error(f"API no disponible en {API_URL}")
+
+tab1, tab2, tab3, tab5, tab4 = st.tabs(
+    [
+        "📈 Executive overview", "👥 Customer analysis", "🚨 Churn risk",
+        "🔮 Predict a customer", "🤖 Model performance",
+    ]
 )
 
 # ---------------------------------------------------------
@@ -386,26 +428,41 @@ with tab2:
 # ---------------------------------------------------------
 with tab3:
     st.subheader("Customer risk analysis")
-    st.caption(
-        "Indicador heurístico descriptivo basado en reglas de negocio. "
-        "No corresponde a predicciones generadas por un modelo entrenado."
-    )
 
     risk_df = filtered_df.copy()
     risk_df["total_tickets"] = (
         risk_df["num_admin_tickets"] + risk_df["num_tech_tickets"]
     )
-    risk_df["risk_score"] = (
-        (risk_df["tenure"] <= 12).astype(int) * 30
-        + (risk_df["total_tickets"] >= 2).astype(int) * 30
-        + (risk_df["monthly_charges"] >= 90).astype(int) * 20
-        + (risk_df["contract"] == "Month-to-month").astype(int) * 20
-    )
-    risk_df["risk_level"] = pd.cut(
-        risk_df["risk_score"],
-        bins=[-1, 30, 60, 100],
-        labels=["Low", "Medium", "High"],
-    )
+    try:
+        payload = risk_df.drop(columns=["churn"]).to_json(orient="records")
+        preds = api_predict(API_URL, payload)
+        risk_df["churn_probability"] = preds["probabilidad_fuga"].to_numpy()
+        risk_df["risk_score"] = (risk_df["churn_probability"] * 100).round(1)
+        risk_df["risk_level"] = (
+            preds["riesgo"]
+            .map({"bajo": "Low", "medio": "Medium", "alto": "High"})
+            .to_numpy()
+        )
+        st.caption(
+            "Probabilidad de fuga calculada por el modelo desplegado en la API "
+            f"({API_URL}). Riesgo bajo < 30 %, medio 30–60 %, alto > 60 %."
+        )
+    except Exception as error:
+        st.warning(
+            "No fue posible consultar la API del modelo; se muestra un "
+            f"indicador heurístico de respaldo. Detalle: {error}"
+        )
+        risk_df["risk_score"] = (
+            (risk_df["tenure"] <= 12).astype(int) * 30
+            + (risk_df["total_tickets"] >= 2).astype(int) * 30
+            + (risk_df["monthly_charges"] >= 90).astype(int) * 20
+            + (risk_df["contract"] == "Month-to-month").astype(int) * 20
+        )
+        risk_df["risk_level"] = pd.cut(
+            risk_df["risk_score"],
+            bins=[-1, 30, 60, 100],
+            labels=["Low", "Medium", "High"],
+        ).astype(str)
     risk_counts = (
         risk_df["risk_level"].value_counts()
         .reindex(["Low", "Medium", "High"], fill_value=0)
@@ -416,7 +473,7 @@ with tab3:
     with left:
         fig = px.bar(
             risk_counts, x="Risk level", y="Customers", color="Risk level",
-            title="Customers by heuristic risk level",
+            title="Customers by risk level",
         )
         st.plotly_chart(fig, width="stretch")
 
@@ -447,6 +504,75 @@ with tab3:
         file_name="high_risk_customers.csv",
         mime="text/csv",
     )
+
+# ---------------------------------------------------------
+# Tab 5: Predict a single customer through the API
+# ---------------------------------------------------------
+with tab5:
+    st.subheader("Predict churn for a customer")
+    st.caption(
+        "Ingresa los datos del cliente. La predicción la hace el modelo "
+        "desplegado en la API (POST /predict)."
+    )
+
+    with st.form("predict_form"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            tenure = st.number_input("Tenure (months)", 0, 100, 4)
+            monthly = st.number_input("Monthly charges", 0.0, 200.0, 85.0)
+            total = st.number_input(
+                "Total charges", 0.0, 10000.0, float(4 * 85.0)
+            )
+        with c2:
+            contract = st.selectbox(
+                "Contract", ["Month-to-month", "One year", "Two year"]
+            )
+            internet = st.selectbox(
+                "Internet service", ["Fiber optic", "DSL", "No"]
+            )
+            payment = st.selectbox(
+                "Payment method",
+                [
+                    "Electronic check", "Mailed check",
+                    "Bank transfer (automatic)", "Credit card (automatic)",
+                ],
+            )
+        with c3:
+            tech_support = st.selectbox("Tech support", ["No", "Yes"])
+            online_security = st.selectbox("Online security", ["No", "Yes"])
+            paperless = st.selectbox("Paperless billing", ["Yes", "No"])
+            senior = st.selectbox("Senior citizen", ["No", "Yes"])
+        submitted = st.form_submit_button("Predict")
+
+    if submitted:
+        customer = {
+            "tenure": tenure, "monthly_charges": monthly,
+            "total_charges": total, "contract": contract,
+            "internet_service": internet, "payment_method": payment,
+            "tech_support": tech_support, "online_security": online_security,
+            "paperless_billing": paperless,
+            "senior_citizen": 1 if senior == "Yes" else 0,
+        }
+        try:
+            result = api_predict(API_URL, json.dumps([customer])).iloc[0]
+            probability = result["probabilidad_fuga"]
+            level = result["riesgo"]
+            icon = {"bajo": "🟢", "medio": "🟡", "alto": "🔴"}[level]
+            a, b = st.columns(2)
+            a.metric("Churn probability", f"{probability:.1%}")
+            b.metric("Risk level", f"{icon} {level.capitalize()}")
+            st.progress(float(probability))
+            if level == "alto":
+                st.error(
+                    "Cliente con alta probabilidad de fuga: priorizar contacto "
+                    "y ofrecer una tarifa diferenciada o un contrato más largo."
+                )
+            elif level == "medio":
+                st.warning("Riesgo moderado: incluir en campañas de fidelización.")
+            else:
+                st.success("Riesgo bajo: mantener seguimiento normal.")
+        except Exception as error:
+            st.error(f"No fue posible obtener la predicción de la API: {error}")
 
 # ---------------------------------------------------------
 # Tab 4: MLflow model performance

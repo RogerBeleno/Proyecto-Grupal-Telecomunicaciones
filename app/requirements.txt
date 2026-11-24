@@ -1,0 +1,6 @@
+streamlit>=1.50
+plotly>=6.0
+pandas>=2.2
+numpy>=1.26
+requests>=2.31
+mlflow-skinny>=3.0
