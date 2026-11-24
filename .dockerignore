@@ -1,0 +1,12 @@
+.git
+.dvc
+env
+.venv
+mlflow.db
+mlruns
+mlartifacts
+mlflow.log
+**/__pycache__
+docs
+*.docx
+models/*.joblib
